@@ -43,6 +43,28 @@ typedef struct MessageHdr {
 	enum MsgTypes msgType;
 }MessageHdr;
 
+#pragma pack(push, 1)
+typedef struct {
+    int id;
+    short port;
+}ADDR_t;
+
+typedef struct {
+    enum MsgTypes type;
+    ADDR_t txAddr;
+    ADDR_t mbAddr[1];
+}JOINREP_t;
+
+typedef struct {
+    enum MsgTypes type;
+    int id;
+    short port;
+    char rfu;
+    long heartbeat;
+}JOINREQ_t;
+
+#pragma pack(pop)
+
 /**
  * CLASS NAME: MP1Node
  *
@@ -75,6 +97,8 @@ public:
 	Address getJoinAddress();
 	void initMemberListTable(Member *memberNode);
 	void printAddress(Address *addr);
+        void procJoinReq(JOINREQ_t *req);
+        void procJoinRep(JOINREP_t *rep, int size);
 	virtual ~MP1Node();
 };
 

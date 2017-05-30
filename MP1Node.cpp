@@ -209,6 +209,48 @@ void MP1Node::checkMessages() {
     return;
 }
 
+void MP1Node::procJoinReq(JOINREQ_t* req) {
+    Address recvAddr;
+    memcpy(&recvAddr, &req->id, sizeof(int)+sizeof(short));
+    log->logNodeAdd(&memberNode->addr, &recvAddr);
+
+    vector<MemberListEntry>& mbLst = memberNode->memberList;
+    mbLst.push_back(MemberListEntry(req->id, req->port));
+
+    // send JOINREP back
+    size_t msgsize = sizeof(MessageHdr) + 
+                     sizeof(ADDR_t) +
+                     mbLst.size()*sizeof(ADDR_t);
+    MessageHdr* msg = (MessageHdr *) malloc(msgsize * sizeof(char));
+    // create JOINREP message: format of data is {struct Address myaddr}
+    msg->msgType = JOINREP;
+    ADDR_t * ptAddr = (ADDR_t*)(msg+1);
+    memcpy(ptAddr, memberNode->addr.addr, sizeof(ADDR_t));
+    ptAddr++;
+    for (int i = 0; i < mbLst.size(); i++) {
+        ptAddr->id   = mbLst[i].id;
+        ptAddr->port = mbLst[i].port;
+        ptAddr++;
+    }
+
+    // send JOINREP message
+    emulNet->ENsend(&memberNode->addr, &recvAddr, (char *)msg, msgsize);
+
+    free(msg);
+}
+
+void MP1Node::procJoinRep(JOINREP_t *rep, int size) {
+
+    cout << "tx=("<< rep->txAddr.id<<":"<<rep->txAddr.port<<")"<<endl;
+    size -= sizeof(int) + sizeof(ADDR_t);
+    ADDR_t *mbAddr = &rep->mbAddr[0];
+    for(int i = 0; i < size/sizeof(ADDR_t); i++) {
+        cout << "(" << mbAddr[i].id << ":" << mbAddr[i].port << ")";
+    }
+    cout << endl;
+}
+
+
 /**
  * FUNCTION NAME: recvCallBack
  *
@@ -218,6 +260,16 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 	/*
 	 * Your code goes here
 	 */
+    
+    MessageHdr *msg = (MessageHdr*)data;
+    switch (msg->msgType) {
+    case JOINREQ:
+        procJoinReq((JOINREQ_t*)data);
+        break;
+    case JOINREP:
+        procJoinRep((JOINREP_t*)data, size);
+        break;
+    }
 }
 
 /**
@@ -232,7 +284,11 @@ void MP1Node::nodeLoopOps() {
 	/*
 	 * Your code goes here
 	 */
-
+    vector<MemberListEntry>& mbLst = memberNode->memberList;
+    for (int i = 0; i < mbLst.size(); i++) {
+    //    cout << "("<< mbLst[i].id << ":" << mbLst[i].port << ")";
+    }
+    //cout << endl;
     return;
 }
 
