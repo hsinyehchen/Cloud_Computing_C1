@@ -31,6 +31,7 @@
 enum MsgTypes{
     JOINREQ,
     JOINREP,
+    GOSSIP,
     DUMMYLASTMSGTYPE
 };
 
@@ -50,9 +51,19 @@ typedef struct {
 }ADDR_t;
 
 typedef struct {
+    int id;
+    short port;
+    long hrbeat;
+}ADDRHRBT_t;
+
+typedef struct {
     enum MsgTypes type;
-    ADDR_t txAddr;
-    ADDR_t mbAddr[1];
+    ADDRHRBT_t addrHr[1];
+}GOSSIP_t;
+
+typedef struct {
+    enum MsgTypes type;
+    ADDRHRBT_t addrHr[1];
 }JOINREP_t;
 
 typedef struct {
@@ -77,12 +88,14 @@ private:
 	Params *par;
 	Member *memberNode;
 	char NULLADDR[6];
-
+        long localTime;
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {
 		return memberNode;
 	}
+        void advanceLocalTime(void) {localTime++;};
+        long getLocalTime(void) {return localTime;}
 	int recvLoop();
 	static int enqueueWrapper(void *env, char *buff, int size);
 	void nodeStart(char *servaddrstr, short serverport);
@@ -99,6 +112,11 @@ public:
 	void printAddress(Address *addr);
         void procJoinReq(JOINREQ_t *req);
         void procJoinRep(JOINREP_t *rep, int size);
+        int findInMBList(vector<MemberListEntry>& mbLst, int id, short port);
+        void procGossip(GOSSIP_t *data, int size);
+        void sendJoinRep(int rxId, short rxPort);
+        void sendGossip(int rxId, short rxPort);
+
 	virtual ~MP1Node();
 };
 

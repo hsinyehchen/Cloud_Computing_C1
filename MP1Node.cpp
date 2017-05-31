@@ -107,6 +107,7 @@ int MP1Node::initThisNode(Address *joinaddr) {
 	memberNode->heartbeat = 0;
 	memberNode->pingCounter = TFAIL;
 	memberNode->timeOutCounter = -1;
+    localTime = 0;
     initMemberListTable(memberNode);
 
     return 0;
@@ -175,6 +176,7 @@ void MP1Node::nodeLoop() {
     if (memberNode->bFailed) {
     	return;
     }
+    advanceLocalTime();
 
     // Check my messages
     checkMessages();
@@ -214,40 +216,78 @@ void MP1Node::procJoinReq(JOINREQ_t* req) {
     memcpy(&recvAddr, &req->id, sizeof(int)+sizeof(short));
     log->logNodeAdd(&memberNode->addr, &recvAddr);
 
+    MemberListEntry entry(req->id,
+                          req->port, 
+                          req->heartbeat, 
+                          getLocalTime());
     vector<MemberListEntry>& mbLst = memberNode->memberList;
-    mbLst.push_back(MemberListEntry(req->id, req->port));
+    mbLst.push_back(entry);
 
-    // send JOINREP back
-    size_t msgsize = sizeof(MessageHdr) + 
-                     sizeof(ADDR_t) +
-                     mbLst.size()*sizeof(ADDR_t);
-    MessageHdr* msg = (MessageHdr *) malloc(msgsize * sizeof(char));
-    // create JOINREP message: format of data is {struct Address myaddr}
-    msg->msgType = JOINREP;
-    ADDR_t * ptAddr = (ADDR_t*)(msg+1);
-    memcpy(ptAddr, memberNode->addr.addr, sizeof(ADDR_t));
-    ptAddr++;
+    sendJoinRep(req->id, req->port);
+}
+
+void MP1Node::sendJoinRep(int rxId, short rxPort) {
+
+    vector<MemberListEntry>& mbLst = memberNode->memberList;
+    size_t msgsize = sizeof(JOINREP_t) + mbLst.size()*sizeof(ADDRHRBT_t);
+
+    JOINREP_t *msg = (JOINREP_t *) malloc(msgsize * sizeof(char));
+    msg->type = JOINREP;
+    memcpy((char*)&msg->addrHr[0], memberNode->addr.addr, sizeof(ADDR_t));
+    msg->addrHr[0].hrbeat = memberNode->heartbeat;
     for (int i = 0; i < mbLst.size(); i++) {
-        ptAddr->id   = mbLst[i].id;
-        ptAddr->port = mbLst[i].port;
-        ptAddr++;
+        msg->addrHr[1+i].id   = mbLst[i].id;
+        msg->addrHr[1+i].port = mbLst[i].port;
+        msg->addrHr[1+i].hrbeat = mbLst[i].heartbeat;
     }
 
-    // send JOINREP message
-    emulNet->ENsend(&memberNode->addr, &recvAddr, (char *)msg, msgsize);
+    // populate rx address
+    Address rxAddr;
+    *(int*)&rxAddr.addr[0] = rxId;
+    *(short*)&rxAddr.addr[4] = rxPort;
+
+    emulNet->ENsend(&memberNode->addr, &rxAddr, (char *)msg, msgsize);
 
     free(msg);
+
 }
+
+
+int MP1Node::findInMBList(vector<MemberListEntry>& mbLst, int id, short port) {
+    for (int i = 0; i < mbLst.size(); i++) {
+        if (mbLst[i].getid() == id && mbLst[i].getport() == port)
+            return i;
+    }
+    return -1;
+}
+
 
 void MP1Node::procJoinRep(JOINREP_t *rep, int size) {
 
-    cout << "tx=("<< rep->txAddr.id<<":"<<rep->txAddr.port<<")"<<endl;
-    size -= sizeof(int) + sizeof(ADDR_t);
-    ADDR_t *mbAddr = &rep->mbAddr[0];
-    for(int i = 0; i < size/sizeof(ADDR_t); i++) {
-        cout << "(" << mbAddr[i].id << ":" << mbAddr[i].port << ")";
+    int mbNum = (size - sizeof(int))/sizeof(ADDRHRBT_t);
+    ADDRHRBT_t *addrHr = &rep->addrHr[0];
+    vector<MemberListEntry>& mbLst = memberNode->memberList;
+
+    //cout << "At node"<<memberNode->addr.getAddress();
+    //cout << ", tx=("<< addrHr->id<<":"<< addrHr->port<<")"<<endl;
+    for (int i = 0; i < mbNum; i++ ) {
+
+        //cout << "(" << addrHr[i].id 
+        //     << ":" << addrHr[i].port 
+        //     << ":" << addrHr[i].hrbeat << ")";
+        Address recvAddr;
+        memcpy(&recvAddr, &addrHr[i], sizeof(ADDR_t));
+        log->logNodeAdd(&memberNode->addr, &recvAddr);
+
+        MemberListEntry entry(addrHr[i].id,
+                              addrHr[i].port,
+                              addrHr[i].hrbeat,
+                              getLocalTime());
+        if (-1 == findInMBList(mbLst, addrHr[i].id, addrHr[i].port))
+            mbLst.push_back(entry);
     }
-    cout << endl;
+    //cout << endl;
+    memberNode->inGroup = true; 
 }
 
 
@@ -269,7 +309,43 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
     case JOINREP:
         procJoinRep((JOINREP_t*)data, size);
         break;
+    case GOSSIP:
+        procGossip((GOSSIP_t*)data, size);
+    case DUMMYLASTMSGTYPE:
+    default:
+        break; // Do nothing.
     }
+}
+
+void MP1Node::sendGossip(int rxId, short rxPort) {
+
+    vector<MemberListEntry>& mbLst = memberNode->memberList;
+    size_t msgsize = sizeof(GOSSIP_t) + mbLst.size()*sizeof(ADDRHRBT_t);
+
+    GOSSIP_t *msg = (GOSSIP_t *) malloc(msgsize * sizeof(char));
+    msg->type = GOSSIP;
+    memcpy((char*)&msg->addrHr[0], memberNode->addr.addr, sizeof(ADDR_t));
+    msg->addrHr[0].hrbeat = memberNode->heartbeat;
+    for (int i = 1; i < mbLst.size(); i++) {
+        msg->addrHr[i].id   = mbLst[i].id;
+        msg->addrHr[i].port = mbLst[i].port;
+        msg->addrHr[i].hrbeat = mbLst[i].heartbeat;
+    }
+
+    // populate rx address
+    Address rxAddr;
+    *(int*)&rxAddr.addr[0] = rxId;
+    *(short*)&rxAddr.addr[4] = rxPort;
+
+    emulNet->ENsend(&memberNode->addr, &rxAddr, (char *)msg, msgsize);
+
+    free(msg);
+
+}
+
+
+void MP1Node::procGossip(GOSSIP_t *data, int size) {
+    cout << "procGossip" << endl;
 }
 
 /**
@@ -284,11 +360,17 @@ void MP1Node::nodeLoopOps() {
 	/*
 	 * Your code goes here
 	 */
+
     vector<MemberListEntry>& mbLst = memberNode->memberList;
+    cout <<"T="<<localTime<<", " << *(int*)memberNode->addr.addr << ",";
     for (int i = 0; i < mbLst.size(); i++) {
-    //    cout << "("<< mbLst[i].id << ":" << mbLst[i].port << ")";
+        cout << "(" << mbLst[i].id 
+             << ":" << mbLst[i].port 
+             << ":" << mbLst[i].heartbeat
+             << ":" << mbLst[i].timestamp << ")";
+        sendGossip(mbLst[i].id, mbLst[i].port);
     }
-    //cout << endl;
+    cout << endl;
     return;
 }
 
