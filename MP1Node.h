@@ -116,7 +116,7 @@ public:
         void procGossip(GOSSIP_t *data, int size);
         void sendJoinRep(int rxId, short rxPort);
         void sendGossip(int rxId, short rxPort);
-
+        void checkMember();
 	virtual ~MP1Node();
 };
 
