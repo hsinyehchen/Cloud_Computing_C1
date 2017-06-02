@@ -164,6 +164,11 @@ int MP1Node::finishUpThisNode(){
    /*
     * Your code goes here
     */
+    memset(NULLADDR, 0, sizeof(NULLADDR));
+    localTime = 0;
+    watchList.clear();
+    getMemberNode()->memberList.clear();
+    return 1;
 }
 
 /**
@@ -235,7 +240,7 @@ void MP1Node::sendJoinRep(int rxId, short rxPort) {
     msg->type = JOINREP;
     memcpy((char*)&msg->addrHr[0], memberNode->addr.addr, sizeof(ADDR_t));
     msg->addrHr[0].hrbeat = memberNode->heartbeat;
-    for (int i = 0; i < mbLst.size(); i++) {
+    for (unsigned int i = 0; i < mbLst.size(); i++) {
         msg->addrHr[1+i].id   = mbLst[i].id;
         msg->addrHr[1+i].port = mbLst[i].port;
         msg->addrHr[1+i].hrbeat = mbLst[i].heartbeat;
@@ -254,7 +259,7 @@ void MP1Node::sendJoinRep(int rxId, short rxPort) {
 
 
 int MP1Node::findInMBList(vector<MemberListEntry>& mbLst, int id, short port) {
-    for (int i = 0; i < mbLst.size(); i++) {
+    for (unsigned int i = 0; i < mbLst.size(); i++) {
         if (mbLst[i].getid() == id && mbLst[i].getport() == port)
             return i;
     }
@@ -330,7 +335,7 @@ void MP1Node::sendGossip(int rxId, short rxPort) {
     msg->type = GOSSIP;
     memcpy((char*)&msg->addrHr[0], memberNode->addr.addr, sizeof(ADDR_t));
     msg->addrHr[0].hrbeat = memberNode->heartbeat;
-    for (int i = 0; i < mbLst.size(); i++) {
+    for (unsigned int i = 0; i < mbLst.size(); i++) {
         msg->addrHr[i+1].id   = mbLst[i].id;
         msg->addrHr[i+1].port = mbLst[i].port;
         msg->addrHr[i+1].hrbeat = mbLst[i].heartbeat;
@@ -366,6 +371,8 @@ void MP1Node::procGossip(GOSSIP_t *msg, int size) {
 
         if (!memcmp(&addrHr[i], node->addr.addr, sizeof(ADDR_t)))
             continue;
+        if (-1 != findInMBList(watchList, addrHr[i].id, addrHr[i].port))
+            continue;
 
         int idx = findInMBList(mbLst, addrHr[i].id, addrHr[i].port);
         if (idx == -1) {
@@ -394,17 +401,25 @@ void MP1Node::procGossip(GOSSIP_t *msg, int size) {
 
 void MP1Node::checkMember(){
     vector<MemberListEntry>& mbLst = memberNode->memberList;
-    int timeout = 40;
-    for (int i = 0; i < mbLst.size(); i++) {
-        if(mbLst[i].timestamp + timeout < localTime){
-            Address recvAddr;
-            *(int*)&recvAddr.addr[0] = mbLst[i].id;
-            *(short*)&recvAddr.addr[4] = mbLst[i].port;
+
+    for (unsigned int i = 0; i < mbLst.size(); i++) {
+        if(mbLst[i].timestamp + TFAIL < localTime){
+            watchList.push_back(MemberListEntry(mbLst[i]));
             mbLst.erase(mbLst.begin()+i);
-            log->logNodeRemove(&memberNode->addr, &recvAddr);
         }
     }
 
+    for (unsigned int i = 0; i < watchList.size(); i++) {
+        if (watchList[i].timestamp + TREMOVE < localTime) {
+
+            Address recvAddr;
+            *(int*)&recvAddr.addr[0] = watchList[i].id;
+            *(short*)&recvAddr.addr[4] = watchList[i].port;
+            log->logNodeRemove(&memberNode->addr, &recvAddr);
+
+            watchList.erase(watchList.begin()+i);
+        }
+    }
 }
 
 /**
@@ -421,18 +436,31 @@ void MP1Node::nodeLoopOps() {
 	 */
     checkMember();
 
-    if (localTime % 20 == 0) {
+    if (localTime % 1 == 0) {
         memberNode->heartbeat++;
 
         vector<MemberListEntry>& mbLst = memberNode->memberList;
+        vector<int> shuf(mbLst.size());
+        for (unsigned int i = 0; i < mbLst.size(); i++)
+            shuf[i] = i;
+        random_shuffle(shuf.begin(), shuf.end());
+        for (unsigned int i = 0; i < mbLst.size()/2; i++)
+            sendGossip(mbLst[shuf[i]].id, mbLst[shuf[i]].port);
+
+
+        cout << "randshuf=[";
+        for (unsigned int i = 0; i < shuf.size(); i++) {
+            cout << shuf[i] << ",";
+        }
+	cout << "]" << endl;
+
         cout <<"T="<<localTime<<", " << *(int*)memberNode->addr.addr << ","
              << "hbt = " << memberNode->heartbeat << endl;
-        for (int i = 0; i < mbLst.size(); i++) {
+        for (unsigned int i = 0; i < mbLst.size(); i++) {
             cout << "(" << mbLst[i].id 
                  << ":" << mbLst[i].port 
                  << ":" << mbLst[i].heartbeat
                  << ":" << mbLst[i].timestamp << ")";
-            sendGossip(mbLst[i].id, mbLst[i].port);
         }
         cout << endl;
     }

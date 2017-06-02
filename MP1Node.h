@@ -89,6 +89,7 @@ private:
 	Member *memberNode;
 	char NULLADDR[6];
         long localTime;
+        vector<MemberListEntry> watchList = vector<MemberListEntry>();
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {
