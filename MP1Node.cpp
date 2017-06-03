@@ -219,8 +219,9 @@ void MP1Node::checkMessages() {
 void MP1Node::procJoinReq(JOINREQ_t* req) {
     Address recvAddr;
     memcpy(&recvAddr, &req->id, sizeof(int)+sizeof(short));
+#ifdef DEBUGLOG
     log->logNodeAdd(&memberNode->addr, &recvAddr);
-
+#endif
     MemberListEntry entry(req->id,
                           req->port, 
                           req->heartbeat, 
@@ -291,7 +292,9 @@ void MP1Node::procJoinRep(JOINREP_t *rep, int size) {
 
             Address recvAddr;
             memcpy(&recvAddr, &addrHr[i], sizeof(ADDR_t));
+#ifdef DEBUGLOG
             log->logNodeAdd(&node->addr, &recvAddr);
+#endif
         }
     }
     //cout << endl;
@@ -326,8 +329,8 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 }
 
 void MP1Node::sendGossip(int rxId, short rxPort) {
-    cout << "Gossip from " << *(int*)&memberNode->addr.addr[0] << "to" << rxId
-         << ", hrb = " << memberNode->heartbeat << endl;
+    //cout << "Gossip from " << *(int*)&memberNode->addr.addr[0] << "to" << rxId
+    //     << ", hrb = " << memberNode->heartbeat << endl;
     vector<MemberListEntry>& mbLst = memberNode->memberList;
     size_t msgsize = sizeof(GOSSIP_t) + mbLst.size()*sizeof(ADDRHRBT_t);
 
@@ -361,13 +364,13 @@ void MP1Node::procGossip(GOSSIP_t *msg, int size) {
     ADDRHRBT_t *addrHr = &msg->addrHr[0];
     vector<MemberListEntry>& mbLst = node->memberList;
 
-    cout << "Rx Gossip T="<<getLocalTime()<<" by"<<node->addr.getAddress();
+//    cout << "Rx Gossip T="<<getLocalTime()<<" by"<<node->addr.getAddress();
 //    cout << ", tx=("<< addrHr->id<<":"<< addrHr->port<<")"<<endl;
     for (int i = 0; i < mbNum; i++ ) {
 
-        cout << "(" << addrHr[i].id 
-             << ":" << addrHr[i].port 
-             << ":" << addrHr[i].hrbeat << ")";
+//        cout << "(" << addrHr[i].id 
+//             << ":" << addrHr[i].port 
+//             << ":" << addrHr[i].hrbeat << ")";
 
         if (!memcmp(&addrHr[i], node->addr.addr, sizeof(ADDR_t)))
             continue;
@@ -384,19 +387,21 @@ void MP1Node::procGossip(GOSSIP_t *msg, int size) {
 
             Address recvAddr;
             memcpy(&recvAddr, &addrHr[i], sizeof(ADDR_t));
+#ifdef DEBUGLOG
             log->logNodeAdd(&node->addr, &recvAddr);
-            cout << "a";
+#endif
+//            cout << "a";
         }
         else {
             if (addrHr[i].hrbeat > mbLst[idx].heartbeat) {
                 mbLst[idx].setheartbeat(addrHr[i].hrbeat);
                 mbLst[idx].settimestamp(getLocalTime());
-                cout << "u";
+//                cout << "u";
             }
         }
 
     }
-    cout << endl;
+//    cout << endl;
 }
 
 void MP1Node::checkMember(){
@@ -415,8 +420,9 @@ void MP1Node::checkMember(){
             Address recvAddr;
             *(int*)&recvAddr.addr[0] = watchList[i].id;
             *(short*)&recvAddr.addr[4] = watchList[i].port;
+#ifdef DEBUGLOG
             log->logNodeRemove(&memberNode->addr, &recvAddr);
-
+#endif
             watchList.erase(watchList.begin()+i);
         }
     }
@@ -448,21 +454,21 @@ void MP1Node::nodeLoopOps() {
             sendGossip(mbLst[shuf[i]].id, mbLst[shuf[i]].port);
 
 
-        cout << "randshuf=[";
-        for (unsigned int i = 0; i < shuf.size(); i++) {
-            cout << shuf[i] << ",";
-        }
-	cout << "]" << endl;
+//        cout << "randshuf=[";
+//        for (unsigned int i = 0; i < shuf.size(); i++) {
+//            cout << shuf[i] << ",";
+//        }
+//	cout << "]" << endl;
 
-        cout <<"T="<<localTime<<", " << *(int*)memberNode->addr.addr << ","
-             << "hbt = " << memberNode->heartbeat << endl;
-        for (unsigned int i = 0; i < mbLst.size(); i++) {
-            cout << "(" << mbLst[i].id 
-                 << ":" << mbLst[i].port 
-                 << ":" << mbLst[i].heartbeat
-                 << ":" << mbLst[i].timestamp << ")";
-        }
-        cout << endl;
+//        cout <<"T="<<localTime<<", " << *(int*)memberNode->addr.addr << ","
+//             << "hbt = " << memberNode->heartbeat << endl;
+//        for (unsigned int i = 0; i < mbLst.size(); i++) {
+//            cout << "(" << mbLst[i].id 
+//                 << ":" << mbLst[i].port 
+//                 << ":" << mbLst[i].heartbeat
+//                 << ":" << mbLst[i].timestamp << ")";
+//        }
+//        cout << endl;
     }
     return;
 }
