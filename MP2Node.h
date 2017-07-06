@@ -53,8 +53,12 @@ private:
 	vector<Node> haveReplicasOf;
 	// Ring
 	vector<Node> ring;
+        int ringIdx;
+
 	// Hash Table
 	HashTable * ht;
+        map<string, ReplicaType> mp_Rep;
+
 	// Member representing this member
 	Member *memberNode;
 	// Params object
@@ -93,6 +97,7 @@ public:
         void handleCreateMessage(Message message);
         void handleReplyMessage(Message message);
         void handleReadMessage(Message message);
+        void handleUpdateMessage(Message message);
         void handleReadreplyMessage(Message message);
 
 	// coordinator dispatches messages to corresponding nodes
@@ -108,8 +113,8 @@ public:
 	bool deletekey(string key);
 
 	// stabilization protocol - handle multiple failures
-	void stabilizationProtocol(vector<Node>& oldRing);
-
+	void stabilizationProtocol(vector<Node>& oldRing, int oldIdx);
+        void updateNeighbors();
 	~MP2Node();
 };
 

@@ -34,11 +34,11 @@ def submit():
     print '!! Submission Cancelled'
     return
 
-  
+
   output = subprocess.Popen(['sh', 'run.sh', str(0)]).communicate()[0]
-  submissions = [source(i) for i in range(3)]
+  submissions = [source(i) for i in range(4)]
   submitSolution(login, password, submissions)
-  
+
 
 
 # =========================== LOGIN HELPERS - NO NEED TO CONFIGURE THIS =======================================
@@ -65,14 +65,14 @@ def partPrompt():
   return (partIdx, partIds[partIdx])
 
 
+
 def submit_url():
   """Returns the submission url."""
   return "https://www.coursera.org/api/onDemandProgrammingScriptSubmissions.v1"
 
-def submitSolution(email_address,password, submissions):
+def submitSolution(email_address, password, submissions):
   """Submits a solution to the server. Returns (result, string)."""
-  
-  values = {
+  values = { 
       "assignmentKey": akey,  \
       "submitterEmail": email_address, \
       "secret": password, \
@@ -85,9 +85,12 @@ def submitSolution(email_address,password, submissions):
           },
           partIds[2]: {
               "output": submissions[2]
+          },
+          partIds[3]: {
+              "output": submissions[3]
           }
       }
-  }
+    }
   url = submit_url()
   data = json.dumps(values)
   req = urllib2.Request(url)
@@ -102,24 +105,24 @@ def source(partIdx):
   f = open("dbg.%d.log" % partIdx)
   src = f.read() 
   f.close()
-  #print src
   return src
-
-
+  
 def cleanup():
-    for i in range(3):
+    for i in range(4):
         try:
             os.remove("dbg.%s.log" % i)
         except:
             pass
 
 
-akey = 'Mj8OkgI-EeaTLQonT2FRpw'
-# the "Identifier" you used when creating the part
-partIds = ['b9m9h', 'MxUat', '8ATm3']
-# used to generate readable run-time information for students
-partFriendlyNames = ['Single Failure', 'Multiple Failure', 'Message Drop Single Failure'] 
 
+akey = 'Lm64BvbLEeWEJw5JS44kjw'
+
+# the "Identifier" you used when creating the part
+partIds = ['PH3Q7', 'PIXym', 'mUKdC', 'peNB6']
+# used to generate readable run-time information for students
+partFriendlyNames = ['Create Test', 'Delete Test', 'Read Test', 'Update Test'] 
+# source files to collect (just for our records)
 submit()
 
 cleanup()
