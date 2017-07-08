@@ -94,6 +94,7 @@ public:
 
 	// handle messages from receiving queue
 	void checkMessages();
+        void checkMsgRec();
         void handleCreateMessage(Message message);
         void handleReplyMessage(Message message);
         void handleReadMessage(Message message);
@@ -113,7 +114,8 @@ public:
 	bool deletekey(string key);
 
 	// stabilization protocol - handle multiple failures
-	void stabilizationProtocol(vector<Node>& oldRing, int oldIdx);
+	void stabilizationProtocol(vector<Node>& oldhasMyReplicas,
+                                   vector<Node>& oldhaveReplicasOf);
         void updateNeighbors();
 	~MP2Node();
 };

@@ -40,6 +40,8 @@ void MP2Node::updateRing() {
 	 */
 	vector<Node> curMemList;
         vector<Node> oldRing(ring.begin(), ring.end());
+        vector<Node> oldhasMyReplicas= hasMyReplicas;
+        vector<Node> oldhaveReplicasOf = haveReplicasOf;
         int oldIdx = ringIdx;
 
 	/*
@@ -80,12 +82,12 @@ void MP2Node::updateRing() {
 	 */
 	// Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
         if (ring.size() < oldRing.size())
-            stabilizationProtocol(oldRing, oldIdx);
+            stabilizationProtocol(oldhasMyReplicas, oldhaveReplicasOf);
 
-        cout << "Node(" << memberNode->addr.getAddress() << ") => ";
+        /*cout << "Node(" << memberNode->addr.getAddress() << ") => ";
         for (auto ele : ht->hashTable)
             cout << "(" << ele.first << ":" << ele.second << ":" << mp_Rep[ele.first]<< "),";
-        cout << endl;
+        cout << endl;*/
 }
 
 /**
@@ -142,22 +144,25 @@ void MP2Node::clientCreate(string key, string value) {
 	 */
 
     vector<Node> nodeLst(findNodes(key));
-
+    g_transID++;
     mpMsgRec[g_transID] = KY_RPY(0, CREATE, key, value);
-    Message msg(g_transID++, this->memberNode->addr, CREATE, key, value, PRIMARY);
+    Message msg(g_transID, this->memberNode->addr, CREATE, key, value, PRIMARY);
     cout << "clientCreate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
     for (auto n : nodeLst) {
         cout << "Replicate "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
-
-            mpMsgRec[g_transID].rx_rpy += (int)createKeyValue(key, value, msg.replica);
+            if (createKeyValue(key, value, msg.replica))
+                mpMsgRec[g_transID].rx_rpy++;
+            else
+                mpMsgRec[g_transID].rx_rpy--;
         }
         else {
             emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
         }
         msg.replica = (ReplicaType)((char)msg.replica + 1);
     }
+    
 }
 
 /**
@@ -175,23 +180,27 @@ void MP2Node::clientRead(string key){
 	 */
     //cout << "clientRead, key = " << key << endl;
     vector<Node> nodeLst(findNodes(key));
-
+    g_transID++;
     //if (ht->count(key) > 0)
     //    cout << "Coordinator has the KEEEEYYYYYYYYYY!!!" << endl;
 
     mpMsgRec[g_transID] = KY_RPY(0, READ, key, "");
-    Message msg(g_transID++, this->memberNode->addr, READ, key);
+    Message msg(g_transID, this->memberNode->addr, READ, key);
 
     for (auto n : nodeLst) {
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "nodeLst is Coordinator!!!" << endl;
-            mpMsgRec[g_transID].rx_rpy++;
+            if (ht->count(key) > 0)
+                mpMsgRec[g_transID].rx_rpy++;
+            else
+                mpMsgRec[g_transID].rx_rpy--;
         }
         else {
             //cout << "TX="<<msg.toString() << "  , to "<< n.nodeAddress.getAddress() << endl;
             emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
         }
     }
+
 }
 
 /**
@@ -208,16 +217,18 @@ void MP2Node::clientUpdate(string key, string value){
 	 * Implement this
 	 */
     vector<Node> nodeLst(findNodes(key));
-
+    g_transID++;
     mpMsgRec[g_transID] = KY_RPY(0, UPDATE, key, value);
-    Message msg(g_transID++, this->memberNode->addr, UPDATE, key, value, PRIMARY);
+    Message msg(g_transID, this->memberNode->addr, UPDATE, key, value, PRIMARY);
     cout << "clientUpdate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
     for (auto n : nodeLst) {
         cout << "Update "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
-
-            mpMsgRec[g_transID].rx_rpy += (int)updateKeyValue(key, value, msg.replica);
+            if (updateKeyValue(key, value, msg.replica))
+                mpMsgRec[g_transID].rx_rpy++;
+            else
+                mpMsgRec[g_transID].rx_rpy--;
         }
         else {
             emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
@@ -288,11 +299,15 @@ void MP2Node::handleReplyMessage(Message message) {
 
     map<int, KY_RPY>::iterator it = mpMsgRec.find(id);
 
-    if (it == mpMsgRec.end())
+    if (it == mpMsgRec.end()) {
+        //cout << "id("<< id << ")is not present !!!" << endl;
         return;
+    }
 
     if (message.success)
         mpMsgRec[id].rx_rpy++;
+    else
+        mpMsgRec[id].rx_rpy--;
 
     if (mpMsgRec[id].rx_rpy >= 2) {
 
@@ -305,7 +320,8 @@ void MP2Node::handleReplyMessage(Message message) {
                                   id, 
                                   mpMsgRec[id].key, mpMsgRec[id].value);
 
-            mpMsgRec.erase(it);
+            mpMsgRec.erase(id);
+
         }
         else if (type == UPDATE) {
             log->logUpdateSuccess(&memberNode->addr, 
@@ -313,12 +329,47 @@ void MP2Node::handleReplyMessage(Message message) {
                                   id, 
                                   mpMsgRec[id].key, mpMsgRec[id].value);
 
-            mpMsgRec.erase(it);
+            mpMsgRec.erase(id);
+            
         }
         else if (type == DELETE) {
 
         }
     }
+    else if (mpMsgRec[id].rx_rpy <= -2) {
+
+        MessageType type = mpMsgRec[id].type;
+
+        if (type == CREATE) {
+            
+            log->logCreateFail(&memberNode->addr, 
+                                  true, 
+                                  id, 
+                                  mpMsgRec[id].key, mpMsgRec[id].value);
+
+            mpMsgRec.erase(id);
+        }
+        else if (type == READ) {
+            log->logReadFail(&memberNode->addr, 
+                                  true, 
+                                  id, 
+                                  mpMsgRec[id].key);
+
+            mpMsgRec.erase(id);
+        }
+        else if (type == UPDATE) {
+            log->logUpdateFail(&memberNode->addr, 
+                                  true, 
+                                  id, 
+                                  mpMsgRec[id].key, mpMsgRec[id].value);
+
+            mpMsgRec.erase(id);
+        }
+        else if (type == DELETE) {
+
+        }
+    }
+
 }
 
 
@@ -379,7 +430,7 @@ void MP2Node::handleReadreplyMessage(Message message) {
                                   id, 
                                   mpMsgRec[id].key, message.value);
 
-            mpMsgRec.erase(it);
+            mpMsgRec.erase(id);
         }
     }
 }
@@ -499,6 +550,11 @@ void MP2Node::checkMessages() {
 	 */
 }
 
+
+void MP2Node::checkMsgRec() {
+
+}
+
 /**
  * FUNCTION NAME: findNodes
  *
@@ -563,59 +619,60 @@ int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
  *				1) Ensures that there are three "CORRECT" replicas of all the keys in spite of failures and joins
  *				Note:- "CORRECT" replicas implies that every key is replicated in its two neighboring nodes in the ring
  */
-void MP2Node::stabilizationProtocol(vector<Node>& oldRing, int oldIdx) {
-	/*
-	 * Implement this
-	 */
-    
-    vector<Node> crashNode;
-    vector<int>  crashIdx;
-    for (int i = 0, j = 0; i < ring.size() && j < oldRing.size();) {
-        if (memcmp(ring[i].nodeAddress.addr, oldRing[j].nodeAddress.addr, sizeof(char)*6) == 0) {
-            i++;
-            j++;
-        }
-        else {
-            crashNode.push_back(oldRing[j]);
-            crashIdx.push_back(j);
-            j++;
-        }
-    }
-    
-    /*cout << "Old Ring = ";
-    for (Node n : oldRing)
-        cout << "(" << n.nodeAddress.getAddress() << ") ";
-    cout << endl;
-    cout << "Ring = ";
-    for (Node n : ring)
-        cout << "(" << n.nodeAddress.getAddress() << ") ";
-    cout << endl;*/
+void MP2Node::stabilizationProtocol(vector<Node>& oldhas, vector<Node>& oldOf) {
 
     bool pre1 = false, pre2 = false, post1 = false, post2 = false;
-
-    for (int i = 0; i < crashNode.size(); i++) {
-        cout << memberNode->addr.getAddress() <<"- Node Missing: " << crashNode[i].nodeAddress.getAddress() << endl;
-        if (crashIdx[i] == (oldIdx + 1)%oldRing.size())
-            post1 = true;
-        else if(crashIdx[i] == (oldIdx + 2)%oldRing.size())
-            post2 = true;
-        else if(crashIdx[i] == (oldIdx - 1 + oldRing.size())%oldRing.size())
-            pre1 = true;
-        else if(crashIdx[i] == (oldIdx - 2 + oldRing.size())%oldRing.size())
-            pre2 = true;
+    if (oldhas.size() != 2 || oldOf.size() != 2)
+        return;
+    if (oldhas[0].nodeAddress == hasMyReplicas[0].nodeAddress
+     && !(oldhas[1].nodeAddress == hasMyReplicas[1].nodeAddress)) {
+        //post1 = false;
+        post2 = true;
+    }
+    else if (oldhas[1].nodeAddress == hasMyReplicas[0].nodeAddress) {
+        post1 = true;
+        //post2 = false;
+    }
+    else if (!(oldhas[0].nodeAddress == hasMyReplicas[0].nodeAddress) 
+     && !(oldhas[1].nodeAddress == hasMyReplicas[1].nodeAddress)) {
+        post1 = true;
+        post2 = true;
     }
 
+
+    if (oldOf[0].nodeAddress == haveReplicasOf[0].nodeAddress
+     && !(oldOf[1].nodeAddress == haveReplicasOf[1].nodeAddress)) {
+        //post1 = false;
+        pre2 = true;
+    }
+    else if (oldOf[1].nodeAddress == haveReplicasOf[0].nodeAddress) {
+        pre1 = true;
+        //post2 = false;
+    }
+    else if (!(oldOf[0].nodeAddress == haveReplicasOf[0].nodeAddress) 
+     && !(oldOf[1].nodeAddress == haveReplicasOf[1].nodeAddress)) {
+        pre1 = true;
+        pre2 = true;
+    }
+
+    if (!pre1 && !pre2 && !post1 && !post2)
+        return;
+    cout << memberNode->addr.getAddress(); 
+    cout << " pre1="<<pre1<<",pre2="<<pre2<<",post1="<<post1<<"post2="<<post2<<endl;
+
+    g_transID++;
     for (auto ele : mp_Rep) {
-        if (ele.second == PRIMARY) {
+        ReplicaType type = ele.second;
+        if (type == PRIMARY) {
             string key = ele.first, value = ht->read(ele.first);
             if (post1 && post2) {
-                Message msg1(g_transID, memberNode->addr, CREATE, key, value, SECONDARY);
+                Message msg1(g_transID++, memberNode->addr, CREATE, key, value, SECONDARY);
                 emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, msg1.toString());
                 Message msg2(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
                 emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, msg2.toString());
             }
             else if (post1) {
-                Message msg1(g_transID, memberNode->addr, UPDATE, key, value, SECONDARY);
+                Message msg1(g_transID++, memberNode->addr, UPDATE, key, value, SECONDARY);
                 emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, msg1.toString());
                 Message msg2(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
                 emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, msg2.toString());
@@ -623,6 +680,33 @@ void MP2Node::stabilizationProtocol(vector<Node>& oldRing, int oldIdx) {
             else if (post2) {
                 Message msg2(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
                 emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, msg2.toString());
+            }
+            
+
+        }
+        else if (type == SECONDARY) {
+            if (pre1) {
+                string key = ele.first, value = ht->read(ele.first);
+                mp_Rep[key] = PRIMARY;
+                Message msg1(g_transID++, memberNode->addr, UPDATE, key, value, SECONDARY);
+                emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, msg1.toString());
+                Message msg2(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
+                emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, msg2.toString());
+            }
+        }
+        else if (type == TERTIARY) {
+            string key = ele.first, value = ht->read(ele.first);;
+            if (pre1 && pre2) {
+                mp_Rep[key] = PRIMARY;
+                Message msg1(g_transID++, memberNode->addr, CREATE, key, value, SECONDARY);
+                emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, msg1.toString());
+                Message msg2(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
+                emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, msg2.toString());
+            }
+            else if (pre1 || pre2) {
+                mp_Rep[key] = SECONDARY;
+                Message msg1(g_transID++, memberNode->addr, CREATE, key, value, TERTIARY);
+                emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, msg1.toString());
             }
         }
     }
