@@ -152,10 +152,14 @@ void MP2Node::clientCreate(string key, string value) {
         cout << "Replicate "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
-            if (createKeyValue(key, value, msg.replica))
-                mpMsgRec[g_transID].rx_rpy++;
-            else
-                mpMsgRec[g_transID].rx_rpy--;
+            if (createKeyValue(key, value, msg.replica)) {
+                log->logCreateSuccess(&memberNode->addr, false, g_transID, key, value);
+                mpMsgRec[g_transID].success++;
+            }
+            else {
+                log->logCreateFail(&memberNode->addr, false, g_transID, key, value);
+                mpMsgRec[g_transID].fail++;
+            }
         }
         else {
             emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
@@ -190,10 +194,14 @@ void MP2Node::clientRead(string key){
     for (auto n : nodeLst) {
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "nodeLst is Coordinator!!!" << endl;
-            if (ht->count(key) > 0)
-                mpMsgRec[g_transID].rx_rpy++;
-            else
-                mpMsgRec[g_transID].rx_rpy--;
+            if (ht->count(key) > 0) {
+                log->logReadSuccess(&memberNode->addr, false, g_transID, key, ht->read(key));
+                mpMsgRec[g_transID].success++;
+            }
+            else {
+                log->logReadFail(&memberNode->addr, false, g_transID, key);
+                mpMsgRec[g_transID].fail++;
+            }
         }
         else {
             //cout << "TX="<<msg.toString() << "  , to "<< n.nodeAddress.getAddress() << endl;
@@ -225,10 +233,15 @@ void MP2Node::clientUpdate(string key, string value){
         cout << "Update "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
-            if (updateKeyValue(key, value, msg.replica))
-                mpMsgRec[g_transID].rx_rpy++;
-            else
-                mpMsgRec[g_transID].rx_rpy--;
+            if (updateKeyValue(key, value, msg.replica)) {
+                log->logUpdateSuccess(&memberNode->addr, false, g_transID, key, value);
+                mpMsgRec[g_transID].success++;
+            }
+            else {
+                log->logUpdateFail(&memberNode->addr, false, g_transID, key, value);
+                mpMsgRec[g_transID].fail++;
+            }
+
         }
         else {
             emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
@@ -250,6 +263,31 @@ void MP2Node::clientDelete(string key){
 	/*
 	 * Implement this
 	 */
+    vector<Node> nodeLst(findNodes(key));
+    g_transID++;
+    mpMsgRec[g_transID] = KY_RPY(0, DELETE, key, "");
+
+    Message msg(g_transID, this->memberNode->addr, DELETE, key);
+
+    cout << "clientDelete("<< memberNode->addr.getAddress() <<"): key = " << key << endl;
+    for (auto n : nodeLst) {
+        cout << "Delete "<<key<<" to " << n.nodeAddress.getAddress() << endl;
+        if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
+            //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
+            if (deletekey(key)) {
+                log->logDeleteSuccess(&memberNode->addr, false, g_transID, key);
+                mpMsgRec[g_transID].success++;
+            }
+            else {
+                log->logDeleteFail(&memberNode->addr, false, g_transID, key);
+                mpMsgRec[g_transID].fail++;
+            }
+
+        }
+        else {
+            emulNet->ENsend(&memberNode->addr, &n.nodeAddress, msg.toString());
+        }
+    }
 }
 
 /**
@@ -305,70 +343,9 @@ void MP2Node::handleReplyMessage(Message message) {
     }
 
     if (message.success)
-        mpMsgRec[id].rx_rpy++;
+        mpMsgRec[id].success++;
     else
-        mpMsgRec[id].rx_rpy--;
-
-    if (mpMsgRec[id].rx_rpy >= 2) {
-
-        MessageType type = mpMsgRec[id].type;
-
-        if (type == CREATE) {
-            
-            log->logCreateSuccess(&memberNode->addr, 
-                                  true, 
-                                  id, 
-                                  mpMsgRec[id].key, mpMsgRec[id].value);
-
-            mpMsgRec.erase(id);
-
-        }
-        else if (type == UPDATE) {
-            log->logUpdateSuccess(&memberNode->addr, 
-                                  true, 
-                                  id, 
-                                  mpMsgRec[id].key, mpMsgRec[id].value);
-
-            mpMsgRec.erase(id);
-            
-        }
-        else if (type == DELETE) {
-
-        }
-    }
-    else if (mpMsgRec[id].rx_rpy <= -2) {
-
-        MessageType type = mpMsgRec[id].type;
-
-        if (type == CREATE) {
-            
-            log->logCreateFail(&memberNode->addr, 
-                                  true, 
-                                  id, 
-                                  mpMsgRec[id].key, mpMsgRec[id].value);
-
-            mpMsgRec.erase(id);
-        }
-        else if (type == READ) {
-            log->logReadFail(&memberNode->addr, 
-                                  true, 
-                                  id, 
-                                  mpMsgRec[id].key);
-
-            mpMsgRec.erase(id);
-        }
-        else if (type == UPDATE) {
-            log->logUpdateFail(&memberNode->addr, 
-                                  true, 
-                                  id, 
-                                  mpMsgRec[id].key, mpMsgRec[id].value);
-
-            mpMsgRec.erase(id);
-        }
-        else if (type == DELETE) {
-
-        }
-    }
+        mpMsgRec[id].fail++;
 
 }
 
@@ -415,11 +392,12 @@ void MP2Node::handleReadreplyMessage(Message message) {
     map<int, KY_RPY>::iterator it = mpMsgRec.find(id);
     if (it == mpMsgRec.end())
         return;
+    //cout << "handleReadreplyMessage() " << message.toString() 
+    //     << " ,s=" <<mpMsgRec[id].success << endl;
+    //if (message.success)
+    mpMsgRec[id].success++;
 
-    if (message.success)
-        mpMsgRec[id].rx_rpy++;
-
-    if (mpMsgRec[id].rx_rpy >= 2) {
+    if (mpMsgRec[id].success >= 2) {
 
         MessageType type = mpMsgRec[id].type;
         assert(type == READ);
@@ -488,7 +466,32 @@ bool MP2Node::deletekey(string key) {
 	 * Implement this
 	 */
 	// Delete the key from the local hash table
+    if (ht->deleteKey(key)) {
+        mp_Rep.erase(key);
+        return true;
+    }
+    else
+        return false;
 }
+
+void MP2Node::handleDeleteMessage(Message message) {
+    bool success = deletekey(message.key);
+
+    if (success)
+        log->logDeleteSuccess(&memberNode->addr, 
+                          false, 
+                          message.transID, 
+                          message.key);
+    else
+        log->logDeleteFail(&memberNode->addr, 
+                           false, 
+                           message.transID, 
+                           message.key);
+
+    Message txMsg(message.transID, memberNode->addr, REPLY, success);
+    emulNet->ENsend(&memberNode->addr, &message.fromAddr, txMsg.toString());
+}
+
 
 /**
  * FUNCTION NAME: checkMessages
@@ -528,18 +531,23 @@ void MP2Node::checkMessages() {
                 case CREATE:
                     handleCreateMessage(rxMsg);
                     break;
+                case READ:
+                    handleReadMessage(rxMsg);
+                    break;
                 case UPDATE:
                     handleUpdateMessage(rxMsg);
+                    break;
+                case DELETE:
+                    handleDeleteMessage(rxMsg);
                     break;
                 case REPLY:
                     handleReplyMessage(rxMsg);
                     break;
-                case READ:
-                    handleReadMessage(rxMsg);
-                    break;
                 case READREPLY:
                     handleReadreplyMessage(rxMsg);
                     break;
+                default:
+                    ; //Do nothing
                 }
 
 	}
@@ -548,11 +556,64 @@ void MP2Node::checkMessages() {
 	 * This function should also ensure all READ and UPDATE operation
 	 * get QUORUM replies
 	 */
+    checkMsgRec();
+
 }
 
 
 void MP2Node::checkMsgRec() {
 
+    for (auto ele : mpMsgRec) {
+        int id = ele.first;
+        MessageType type = mpMsgRec[id].type;
+        mpMsgRec[id].time++;
+
+        KY_RPY rc = mpMsgRec[id];
+        if (rc.success >= 2) {
+            if (type == CREATE) {
+            
+                log->logCreateSuccess(&memberNode->addr, true, id, rc.key, rc.value);
+
+                mpMsgRec.erase(id);
+
+            }
+            else if (type == UPDATE) {
+                log->logUpdateSuccess(&memberNode->addr, true, id, rc.key, rc.value);
+
+                mpMsgRec.erase(id);
+            
+            }
+            else if (type == DELETE) {
+                log->logDeleteSuccess(&memberNode->addr, true, id, rc.key);
+
+                mpMsgRec.erase(id);
+            }
+        }
+        else if (rc.fail >= 2 || rc.time > 3) {
+
+            if (type == CREATE) {
+            
+                log->logCreateFail(&memberNode->addr, true, id, rc.key, rc.value);
+
+                mpMsgRec.erase(id);
+            }
+            else if (type == READ) {
+                log->logReadFail(&memberNode->addr, true, id, rc.key);
+
+                mpMsgRec.erase(id);
+            }
+            else if (type == UPDATE) {
+                log->logUpdateFail(&memberNode->addr, true, id, rc.key, rc.value);
+
+                mpMsgRec.erase(id);
+            }
+            else if (type == DELETE) {
+                log->logDeleteFail(&memberNode->addr, true, id, rc.key);
+
+                mpMsgRec.erase(id);
+            }
+        }
+    }
 }
 
 /**
@@ -610,6 +671,7 @@ int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
 	Queue q;
 	return q.enqueue((queue<q_elt> *)env, (void *)buff, size);
 }
+
 /**
  * FUNCTION NAME: stabilizationProtocol
  *

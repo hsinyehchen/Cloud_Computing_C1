@@ -21,13 +21,18 @@
 class KY_RPY {
 public:
     KY_RPY() {}
-    KY_RPY(int r, MessageType t, string k, string v): rx_rpy(r), type(t), key(k), value(v) {}
-    int rx_rpy;
+    KY_RPY(int s, MessageType t, string k, string v): 
+        success(s), fail(0),time(0), type(t), key(k), value(v) {}
+    int success;
+    int fail;
+    int time;
     MessageType type;
     string key;
     string value;
     KY_RPY& operator=(const KY_RPY& rh) {
-        rx_rpy = rh.rx_rpy;
+        success = rh.success;
+        fail = rh.fail;
+        time = rh.time;
         type = rh.type;
         key = rh.key;
         value = rh.value; 
@@ -100,6 +105,7 @@ public:
         void handleReadMessage(Message message);
         void handleUpdateMessage(Message message);
         void handleReadreplyMessage(Message message);
+        void handleDeleteMessage(Message message);
 
 	// coordinator dispatches messages to corresponding nodes
 	void dispatchMessages(Message message);
