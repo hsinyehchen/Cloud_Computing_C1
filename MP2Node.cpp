@@ -147,9 +147,9 @@ void MP2Node::clientCreate(string key, string value) {
     g_transID++;
     mpMsgRec[g_transID] = KY_RPY(0, CREATE, key, value);
     Message msg(g_transID, this->memberNode->addr, CREATE, key, value, PRIMARY);
-    cout << "clientCreate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
+    //cout << "clientCreate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
     for (auto n : nodeLst) {
-        cout << "Replicate "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
+        //cout << "Replicate "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
             if (createKeyValue(key, value, msg.replica)) {
@@ -228,9 +228,9 @@ void MP2Node::clientUpdate(string key, string value){
     g_transID++;
     mpMsgRec[g_transID] = KY_RPY(0, UPDATE, key, value);
     Message msg(g_transID, this->memberNode->addr, UPDATE, key, value, PRIMARY);
-    cout << "clientUpdate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
+    //cout << "clientUpdate("<< memberNode->addr.getAddress() <<"): key = " << key << ", value=" << value << endl;
     for (auto n : nodeLst) {
-        cout << "Update "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
+        //cout << "Update "<<msg.replica<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
             if (updateKeyValue(key, value, msg.replica)) {
@@ -269,9 +269,9 @@ void MP2Node::clientDelete(string key){
 
     Message msg(g_transID, this->memberNode->addr, DELETE, key);
 
-    cout << "clientDelete("<< memberNode->addr.getAddress() <<"): key = " << key << endl;
+    //cout << "clientDelete("<< memberNode->addr.getAddress() <<"): key = " << key << endl;
     for (auto n : nodeLst) {
-        cout << "Delete "<<key<<" to " << n.nodeAddress.getAddress() << endl;
+        //cout << "Delete "<<key<<" to " << n.nodeAddress.getAddress() << endl;
         if (memcmp(memberNode->addr.addr,n.nodeAddress.addr, 6*sizeof(char)) == 0) {
             //cout << "Create nodeLst is Coordinator!!!"<< key << "::" << value << endl;
             if (deletekey(key)) {
@@ -402,7 +402,7 @@ void MP2Node::handleReadreplyMessage(Message message) {
         MessageType type = mpMsgRec[id].type;
         assert(type == READ);
         if (type == READ) {
-            cout << "READ success" << endl;
+            //cout << "READ success" << endl;
             log->logReadSuccess(&memberNode->addr, 
                                   true, 
                                   id, 
@@ -522,7 +522,7 @@ void MP2Node::checkMessages() {
 		memberNode->mp2q.pop();
 
 		string message(data, data + size);
-                cout << memberNode->addr.getAddress() << " RX=" << message << endl;
+                //cout << memberNode->addr.getAddress() << " RX=" << message << endl;
                 Message rxMsg(message);
 		/*
 		 * Handle the message types here
@@ -719,8 +719,8 @@ void MP2Node::stabilizationProtocol(vector<Node>& oldhas, vector<Node>& oldOf) {
 
     if (!pre1 && !pre2 && !post1 && !post2)
         return;
-    cout << memberNode->addr.getAddress(); 
-    cout << " pre1="<<pre1<<",pre2="<<pre2<<",post1="<<post1<<"post2="<<post2<<endl;
+    //cout << memberNode->addr.getAddress(); 
+    //cout << " pre1="<<pre1<<",pre2="<<pre2<<",post1="<<post1<<"post2="<<post2<<endl;
 
     g_transID++;
     for (auto ele : mp_Rep) {
